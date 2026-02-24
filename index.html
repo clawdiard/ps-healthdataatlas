@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HealthData Atlas — US Healthcare Data Infrastructure Map</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏥</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e14;--surface:#111720;--surface2:#1a2030;--border:#252d3d;--text:#e8edf5;--text2:#8892a4;--accent:#4fc3f7;--accent2:#81d4fa;--green:#66bb6a;--amber:#ffca28;--red:#ef5350;--purple:#ab47bc}
+body{font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+.app{display:grid;grid-template-columns:340px 1fr;grid-template-rows:64px 1fr;height:100vh}
+header{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:100}
+header h1{font-size:18px;font-weight:600;letter-spacing:-.3px;display:flex;align-items:center;gap:10px}
+header h1 span{color:var(--accent)}
+.header-stats{display:flex;gap:24px}
+.header-stat{text-align:center}
+.header-stat .val{font-size:20px;font-weight:700;color:var(--accent)}
+.header-stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2)}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:16px}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.search{width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;margin-bottom:12px;outline:none;transition:border-color .2s}
+.search:focus{border-color:var(--accent)}
+.filter-row{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{padding:5px 10px;font-size:11px;border:1px solid var(--border);border-radius:20px;background:transparent;color:var(--text2);cursor:pointer;transition:all .2s}
+.filter-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.company-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;cursor:pointer;transition:all .2s}
+.company-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.company-card.selected{border-color:var(--accent);box-shadow:0 0 20px rgba(79,195,247,.1)}
+.company-card h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.company-card .sector{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.company-card .desc{font-size:12px;color:var(--text2);line-height:1.4;margin-bottom:8px}
+.company-card .meta{display:flex;gap:8px;flex-wrap:wrap}
+.tag{font-size:10px;padding:3px 8px;border-radius:10px;background:rgba(79,195,247,.1);color:var(--accent)}
+.tag.green{background:rgba(102,187,106,.1);color:var(--green)}
+.tag.amber{background:rgba(255,202,40,.1);color:var(--amber)}
+.tag.purple{background:rgba(171,71,188,.1);color:var(--purple)}
+.tag.red{background:rgba(239,83,80,.1);color:var(--red)}
+#map{width:100%;height:100%;background:var(--bg)}
+.leaflet-popup-content-wrapper{background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:10px!important;box-shadow:0 8px 32px rgba(0,0,0,.5)!important}
+.leaflet-popup-tip{background:var(--surface)!important;border:1px solid var(--border)!important}
+.popup-title{font-size:15px;font-weight:700;margin-bottom:4px}
+.popup-sector{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.popup-stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px}
+.popup-stat:last-child{border:none}
+.popup-stat .label{color:var(--text2)}
+.popup-stat .value{font-weight:600}
+.legend{position:absolute;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;z-index:1000;min-width:180px}
+.legend h4{font-size:12px;font-weight:600;margin-bottom:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.legend-item{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+.legend-dot{width:10px;height:10px;border-radius:50%}
+.coverage-overlay{position:absolute;top:80px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;z-index:1000;width:260px}
+.coverage-overlay h4{font-size:12px;font-weight:600;margin-bottom:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.coverage-bar{margin-bottom:10px}
+.coverage-bar .bar-label{display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px}
+.coverage-bar .bar-label span:first-child{color:var(--text2)}
+.coverage-bar .bar-label span:last-child{font-weight:600}
+.bar-track{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .6s ease}
+@media(max-width:768px){
+  .app{grid-template-columns:1fr;grid-template-rows:64px auto 50vh}
+  .sidebar{max-height:40vh}
+  .coverage-overlay{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🏥 <span>HealthData</span> Atlas</h1>
+    <div class="header-stats">
+      <div class="header-stat"><div class="val" id="totalCompanies">0</div><div class="lbl">Companies</div></div>
+      <div class="header-stat"><div class="val" id="totalHospitals">6,100+</div><div class="lbl">Hospitals Served</div></div>
+      <div class="header-stat"><div class="val" id="totalRevenue">$48B+</div><div class="lbl">Combined Revenue</div></div>
+      <div class="header-stat"><div class="val" id="totalSectors">7</div><div class="lbl">Sectors</div></div>
+    </div>
+  </header>
+  <div class="sidebar">
+    <input class="search" placeholder="Search companies, sectors, locations..." id="searchInput"/>
+    <div class="filter-row" id="filterRow"></div>
+    <div id="companyList"></div>
+  </div>
+  <div style="position:relative">
+    <div id="map"></div>
+    <div class="coverage-overlay">
+      <h4>Market Coverage</h4>
+      <div id="coverageBars"></div>
+    </div>
+    <div class="legend">
+      <h4>Sectors</h4>
+      <div id="legendItems"></div>
+    </div>
+  </div>
+</div>
+<script>
+const SECTORS = {
+  'Clinical Decision Support':{ color:'#4fc3f7', icon:'💊' },
+  'Drug Data & Formulary':{ color:'#66bb6a', icon:'💉' },
+  'Revenue Cycle & Coding':{ color:'#ffca28', icon:'💰' },
+  'EHR & Health IT':{ color:'#ef5350', icon:'🖥️' },
+  'Quality & Compliance':{ color:'#ab47bc', icon:'✅' },
+  'Workforce & Scheduling':{ color:'#ff7043', icon:'👥' },
+  'Population Health & Analytics':{ color:'#26c6da', icon:'📊' }
+};
+
+const companies = [
+  {name:'FDB (First Databank)',sector:'Drug Data & Formulary',lat:37.56,lng:-122.27,hq:'South San Francisco, CA',founded:1977,hospitals:2800,revenue:'Part of Hearst Health',desc:'Premier drug knowledge base powering clinical decisions at pharmacies and hospitals nationwide. Covers drug interactions, pricing, clinical content.',tags:['Drug Database','Clinical','Pharmacy'],coverage:65},
+  {name:'Zynx Health',sector:'Clinical Decision Support',lat:33.93,lng:-118.38,hq:'Los Angeles, CA',founded:1996,hospitals:1600,revenue:'Part of Hearst Health',desc:'Evidence-based clinical decision support — order sets, care plans, and clinical content integrated into major EHR systems.',tags:['Order Sets','Evidence-Based','Care Plans'],coverage:35},
+  {name:'MCG Health',sector:'Clinical Decision Support',lat:47.61,lng:-122.33,hq:'Seattle, WA',founded:1996,hospitals:3100,revenue:'Part of Hearst Health',desc:'Clinical guidelines used by health plans and providers for utilization management, care review, and evidence-based coverage decisions.',tags:['Guidelines','Utilization','Payer'],coverage:55},
+  {name:'QGenda',sector:'Workforce & Scheduling',lat:33.85,lng:-84.37,hq:'Atlanta, GA',founded:2006,hospitals:4500,revenue:'Part of Hearst Health',desc:'Leading healthcare workforce management platform — physician scheduling, credentialing, capacity planning for 600K+ providers.',tags:['Scheduling','Workforce','Credentialing'],coverage:45},
+  {name:'MedBridge Health',sector:'Clinical Decision Support',lat:47.65,lng:-122.35,hq:'Seattle, WA',founded:2011,hospitals:1100,revenue:'$100M+',desc:'Education, patient engagement, and telehealth platform for rehabilitation and healthcare professionals.',tags:['Education','Rehab','Telehealth'],coverage:18},
+  {name:'Epic Systems',sector:'EHR & Health IT',lat:43.15,lng:-89.52,hq:'Verona, WI',founded:1979,hospitals:2800,revenue:'$4.6B',desc:'Largest EHR vendor in the US, covering ~38% of acute care hospitals and over 305 million patient records.',tags:['EHR','Interoperability','Patient Portal'],coverage:38},
+  {name:'Oracle Health (Cerner)',sector:'EHR & Health IT',lat:39.12,lng:-94.55,hq:'Kansas City, MO',founded:1979,hospitals:2200,revenue:'$5.9B (Oracle Health)',desc:'Major EHR platform now under Oracle, serving DoD/VA military health and ~25% of US hospitals.',tags:['EHR','Federal','Cloud'],coverage:25},
+  {name:'MEDITECH',sector:'EHR & Health IT',lat:42.48,lng:-71.23,hq:'Canton, MA',founded:1969,hospitals:2300,revenue:'$600M',desc:'EHR vendor strong in community and rural hospitals. Cloud platform Expanse modernizing its install base.',tags:['EHR','Community','Cloud'],coverage:22},
+  {name:'Veeva Systems',sector:'EHR & Health IT',lat:34.26,lng:-118.78,hq:'Pleasanton, CA',founded:2007,hospitals:null,revenue:'$2.4B',desc:'Cloud software for life sciences — CRM, clinical data management, regulatory content. Serves 95% of top pharma.',tags:['Life Sciences','CRM','Clinical Trials'],coverage:12},
+  {name:'3M Health Information Systems',sector:'Revenue Cycle & Coding',lat:44.95,lng:-93.1,hq:'St. Paul, MN',founded:1980,hospitals:5000,revenue:'$1.5B division',desc:'Computer-assisted coding, CDI, grouping, and quality reporting software used across the majority of US health systems.',tags:['Coding','CDI','Grouping'],coverage:48},
+  {name:'Optum (UHG)',sector:'Population Health & Analytics',lat:44.88,lng:-93.23,hq:'Eden Prairie, MN',founded:2011,hospitals:3000,revenue:'$22B+',desc:'Massive health services platform — analytics, pharmacy benefits, care delivery, population health across 130M lives.',tags:['Analytics','PBM','Care Delivery'],coverage:55},
+  {name:'Inovalon',sector:'Quality & Compliance',lat:39.02,lng:-77.07,hq:'Bowie, MD',founded:1998,hospitals:2500,revenue:'$800M',desc:'Data-driven healthcare analytics for quality improvement, risk adjustment, and regulatory compliance.',tags:['Quality','Risk Adj','Compliance'],coverage:30},
+  {name:'Nuance/Microsoft DAX',sector:'Clinical Decision Support',lat:42.36,lng:-71.06,hq:'Burlington, MA',founded:1992,hospitals:4000,revenue:'$1.7B (pre-acquisition)',desc:'AI-powered clinical documentation — Dragon Medical, DAX ambient listening. Now part of Microsoft, powering AI in healthcare.',tags:['AI','Dictation','Ambient'],coverage:40},
+  {name:'Veracyte',sector:'Population Health & Analytics',lat:37.56,lng:-122.29,hq:'South San Francisco, CA',founded:2008,hospitals:800,revenue:'$400M',desc:'Genomic diagnostics company — molecular testing for cancer, thyroid, lung, enabling precision medicine decisions.',tags:['Genomics','Diagnostics','Precision'],coverage:8},
+  {name:'Health Catalyst',sector:'Population Health & Analytics',lat:40.76,lng:-111.89,hq:'Salt Lake City, UT',founded:2008,hospitals:400,revenue:'$300M',desc:'Data platform and analytics for health systems — data warehousing, AI/ML, clinical and financial improvement.',tags:['Data Platform','AI/ML','Analytics'],coverage:15},
+  {name:'Waystar',sector:'Revenue Cycle & Coding',lat:38.25,lng:-85.76,hq:'Louisville, KY',founded:2017,hospitals:3200,revenue:'$700M',desc:'Cloud revenue cycle technology — claims management, payment accuracy, denial prevention for hospitals and payers.',tags:['Claims','Payments','Denials'],coverage:32},
+  {name:'Rhapsody (InterSystems)',sector:'EHR & Health IT',lat:42.37,lng:-71.24,hq:'Cambridge, MA',founded:1978,hospitals:2000,revenue:'$1B+',desc:'Health data interoperability platform — HL7, FHIR integration engine connecting disparate health IT systems.',tags:['Interoperability','FHIR','Integration'],coverage:28},
+  {name:'Arcadia',sector:'Population Health & Analytics',lat:42.36,lng:-71.05,hq:'Burlington, MA',founded:2002,hospitals:1500,revenue:'$200M',desc:'Data aggregation and analytics platform for value-based care — connecting EHR, claims, and SDoH data.',tags:['Value-Based','SDoH','Aggregation'],coverage:18},
+  {name:'Vizient',sector:'Quality & Compliance',lat:32.91,lng:-96.77,hq:'Irving, TX',founded:1977,hospitals:3400,revenue:'$1.8B',desc:'Largest healthcare GPO — supply chain, clinical analytics, benchmarking, and performance improvement for health systems.',tags:['GPO','Supply Chain','Benchmarking'],coverage:42},
+  {name:'symplr',sector:'Workforce & Scheduling',lat:29.98,lng:-95.34,hq:'Houston, TX',founded:2006,hospitals:3700,revenue:'$500M',desc:'Healthcare operations platform — credentialing, compliance, workforce management, and access management.',tags:['Credentialing','Compliance','Access'],coverage:38}
+];
+
+// Init map
+const map = L.map('map',{zoomControl:false,attributionControl:false}).setView([39.5,-98.5],4);
+L.control.zoom({position:'bottomleft'}).addTo(map);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  maxZoom:18,subdomains:'abcd'
+}).addTo(map);
+
+// Populate counters
+document.getElementById('totalCompanies').textContent = companies.length;
+
+// Build legend
+const legendEl = document.getElementById('legendItems');
+Object.entries(SECTORS).forEach(([name,{color,icon}])=>{
+  legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${icon} ${name}</div>`;
+});
+
+// Build filters
+const filterRow = document.getElementById('filterRow');
+const sectors = [...new Set(companies.map(c=>c.sector))];
+filterRow.innerHTML = `<button class="filter-btn active" data-sector="all">All</button>` +
+  sectors.map(s=>`<button class="filter-btn" data-sector="${s}">${s.split(' ')[0]}</button>`).join('');
+
+let activeSector = 'all';
+filterRow.addEventListener('click',e=>{
+  if(!e.target.classList.contains('filter-btn'))return;
+  filterRow.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  activeSector = e.target.dataset.sector;
+  render();
+});
+
+// Coverage bars
+const coverageData = [
+  {label:'Acute Care Hospitals',pct:78},
+  {label:'Ambulatory / Clinics',pct:52},
+  {label:'Long-Term / Post-Acute',pct:34},
+  {label:'Payer / Health Plans',pct:61},
+  {label:'Pharma / Life Sciences',pct:28}
+];
+const coverageBars = document.getElementById('coverageBars');
+coverageData.forEach(d=>{
+  const color = d.pct > 60 ? '#66bb6a' : d.pct > 40 ? '#ffca28' : '#ef5350';
+  coverageBars.innerHTML += `<div class="coverage-bar"><div class="bar-label"><span>${d.label}</span><span>${d.pct}%</span></div><div class="bar-track"><div class="bar-fill" style="width:${d.pct}%;background:${color}"></div></div></div>`;
+});
+
+// Markers
+const markers = [];
+let selectedCard = null;
+
+companies.forEach((c,i)=>{
+  const {color} = SECTORS[c.sector]||{color:'#4fc3f7'};
+  const size = c.hospitals ? Math.min(Math.max(c.hospitals/100,8),30) : 12;
+  const marker = L.circleMarker([c.lat,c.lng],{
+    radius:size,fillColor:color,fillOpacity:.7,color:color,weight:1,opacity:.9
+  }).addTo(map);
+
+  const popupHtml = `
+    <div class="popup-title">${c.name}</div>
+    <div class="popup-sector">${c.sector}</div>
+    <div class="popup-stat"><span class="label">HQ</span><span class="value">${c.hq}</span></div>
+    <div class="popup-stat"><span class="label">Founded</span><span class="value">${c.founded}</span></div>
+    ${c.hospitals?`<div class="popup-stat"><span class="label">Hospitals</span><span class="value">${c.hospitals.toLocaleString()}+</span></div>`:''}
+    <div class="popup-stat"><span class="label">Revenue</span><span class="value">${c.revenue}</span></div>
+    <div class="popup-stat"><span class="label">Coverage</span><span class="value">${c.coverage}%</span></div>
+  `;
+  marker.bindPopup(popupHtml,{maxWidth:280});
+  markers.push({marker,company:c,index:i});
+});
+
+// Sidebar
+const searchInput = document.getElementById('searchInput');
+const companyList = document.getElementById('companyList');
+
+function render(){
+  const q = searchInput.value.toLowerCase();
+  const filtered = companies.filter(c=>{
+    const matchSector = activeSector==='all'||c.sector===activeSector;
+    const matchSearch = !q || c.name.toLowerCase().includes(q) || c.sector.toLowerCase().includes(q) || c.hq.toLowerCase().includes(q) || c.tags.some(t=>t.toLowerCase().includes(q));
+    return matchSector && matchSearch;
+  });
+
+  companyList.innerHTML = filtered.map((c,i)=>{
+    const {color} = SECTORS[c.sector]||{};
+    const tagColors = ['','green','amber','purple'];
+    return `<div class="company-card" data-name="${c.name}">
+      <h3>${c.name}</h3>
+      <div class="sector" style="color:${color}">${c.sector}</div>
+      <div class="desc">${c.desc.substring(0,120)}...</div>
+      <div class="meta">
+        <span class="tag">${c.hq}</span>
+        ${c.hospitals?`<span class="tag green">${c.hospitals.toLocaleString()}+ hospitals</span>`:''}
+        ${c.tags.slice(0,2).map((t,j)=>`<span class="tag ${tagColors[j+2]||''}">${t}</span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Show/hide markers
+  markers.forEach(({marker,company})=>{
+    const visible = filtered.includes(company);
+    if(visible && !map.hasLayer(marker)) marker.addTo(map);
+    else if(!visible && map.hasLayer(marker)) map.removeLayer(marker);
+  });
+}
+
+searchInput.addEventListener('input',render);
+
+companyList.addEventListener('click',e=>{
+  const card = e.target.closest('.company-card');
+  if(!card)return;
+  const name = card.dataset.name;
+  const match = markers.find(m=>m.company.name===name);
+  if(match){
+    map.flyTo([match.company.lat,match.company.lng],7,{duration:1});
+    match.marker.openPopup();
+    document.querySelectorAll('.company-card').forEach(c=>c.classList.remove('selected'));
+    card.classList.add('selected');
+  }
+});
+
+render();
+</script>
+</body>
+</html>
