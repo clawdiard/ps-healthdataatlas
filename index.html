@@ -78,6 +78,42 @@ header h1 span{color:var(--accent)}
 .coverage-bar .bar-label span:last-child{font-weight:600}
 .bar-track{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
 .bar-fill{height:100%;border-radius:3px;transition:width .6s ease}
+/* Timeline Overlay */
+.timeline-toggle{position:absolute;top:80px;right:300px;z-index:1001;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:8px;transition:all .2s}
+.timeline-toggle:hover{border-color:var(--accent);background:rgba(79,195,247,.08)}
+.timeline-toggle.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.timeline-panel{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(10,14,20,.95);z-index:999;display:none;flex-direction:column;overflow:hidden}
+.timeline-panel.visible{display:flex}
+.timeline-header{padding:20px 24px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.timeline-header h2{font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px}
+.timeline-header h2 span{color:var(--accent)}
+.timeline-close{background:none;border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;padding:6px 14px;font-size:12px;transition:all .2s}
+.timeline-close:hover{border-color:var(--accent);color:var(--accent)}
+.timeline-filters{padding:12px 24px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+.tl-filter{padding:5px 12px;font-size:11px;border:1px solid var(--border);border-radius:20px;background:transparent;color:var(--text2);cursor:pointer;transition:all .2s}
+.tl-filter.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.timeline-stats{padding:12px 24px;display:flex;gap:24px;border-bottom:1px solid var(--border)}
+.tl-stat{text-align:center}
+.tl-stat .tl-val{font-size:22px;font-weight:700;color:var(--accent)}
+.tl-stat .tl-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2)}
+.timeline-body{flex:1;overflow-y:auto;padding:24px;position:relative}
+.timeline-body::-webkit-scrollbar{width:4px}
+.timeline-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.tl-year-group{margin-bottom:32px}
+.tl-year{font-size:28px;font-weight:800;color:var(--accent);margin-bottom:16px;position:sticky;top:0;background:rgba(10,14,20,.95);padding:4px 0;z-index:2}
+.tl-year .tl-year-count{font-size:13px;font-weight:500;color:var(--text2);margin-left:12px}
+.tl-track{position:relative;padding-left:32px;border-left:2px solid var(--border);margin-left:14px}
+.tl-event{position:relative;margin-bottom:16px}
+.tl-event::before{content:'';position:absolute;left:-39px;top:10px;width:14px;height:14px;border-radius:50%;border:2px solid var(--accent);background:var(--bg)}
+.tl-event.mega::before{background:var(--accent);box-shadow:0 0 12px rgba(79,195,247,.5)}
+.tl-event-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;transition:all .2s}
+.tl-event-card:hover{border-color:var(--accent);transform:translateX(4px)}
+.tl-event-card .tl-date{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.tl-event-card .tl-title{font-size:15px;font-weight:700;margin-bottom:4px}
+.tl-event-card .tl-parties{font-size:12px;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.tl-event-card .tl-desc{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px}
+.tl-event-card .tl-meta{display:flex;gap:8px;flex-wrap:wrap}
+.tl-deal-val{font-size:13px;font-weight:700;color:var(--green)}
 @media(max-width:768px){
   .app{grid-template-columns:1fr;grid-template-rows:64px auto 50vh}
   .sidebar{max-height:40vh}
@@ -118,6 +154,16 @@ header h1 span{color:var(--accent)}
         <h5>🔗 FHIR Endpoint Stats</h5>
         <div id="fhirFeed"><div class="feed-loading">Loading FHIR data…</div></div>
       </div>
+    </div>
+    <button class="timeline-toggle" id="timelineToggle">📅 M&A Timeline</button>
+    <div class="timeline-panel" id="timelinePanel">
+      <div class="timeline-header">
+        <h2>📅 Healthcare Data <span>M&A Timeline</span></h2>
+        <button class="timeline-close" id="timelineClose">✕ Close</button>
+      </div>
+      <div class="timeline-filters" id="tlFilters"></div>
+      <div class="timeline-stats" id="tlStats"></div>
+      <div class="timeline-body" id="tlBody"></div>
     </div>
     <div class="coverage-overlay">
       <h4>Market Coverage</h4>
@@ -377,7 +423,89 @@ async function loadFHIRStats(){
 // Auto-refresh feeds
 function loadAllFeeds(){loadFDARecalls();loadCMSUpdates();loadFHIRStats();}
 loadAllFeeds();
-setInterval(loadAllFeeds,300000); // Refresh every 5 minutes
+setInterval(loadAllFeeds,300000);
+
+// === M&A TIMELINE ===
+const maDeals=[
+  {date:'2024-11',acquirer:'Oracle',target:'Cerner',value:'$28.3B',sector:'EHR & Health IT',type:'Mega',desc:'Largest healthcare IT acquisition ever. Oracle absorbed Cerner to build integrated cloud health platform.'},
+  {date:'2024-08',acquirer:'Microsoft',target:'Nuance Communications',value:'$19.7B',sector:'Clinical Decision Support',type:'Mega',desc:'Microsoft acquired Nuance for AI-powered clinical documentation, ambient listening, and Dragon Medical.'},
+  {date:'2024-03',acquirer:'UnitedHealth / Optum',target:'Change Healthcare',value:'$13B',sector:'Revenue Cycle & Coding',type:'Mega',desc:'Optum merged with Change Healthcare despite DOJ antitrust challenge, creating claims processing giant.'},
+  {date:'2023-11',acquirer:'Roper Technologies',target:'Frontline Education',value:'$3.7B',sector:'Workforce & Scheduling',type:'Major',desc:'Roper expanded healthcare-adjacent workforce software with Frontline acquisition.'},
+  {date:'2023-09',acquirer:'EQT Partners',target:'Waystar',value:'$2.7B',sector:'Revenue Cycle & Coding',type:'Major',desc:'PE firm EQT took Waystar private, consolidating revenue cycle management technology.'},
+  {date:'2023-06',acquirer:'Francisco Partners',target:'symplr',value:'$1.7B',sector:'Workforce & Scheduling',type:'Major',desc:'PE consolidation of healthcare workforce management platform — credentialing, compliance, governance.'},
+  {date:'2023-04',acquirer:'Hearst Health',target:'QGenda',value:'Undisclosed',sector:'Workforce & Scheduling',type:'Strategic',desc:'Hearst Health acquired QGenda, the leading physician scheduling and workforce platform serving 4,500+ hospitals.'},
+  {date:'2023-02',acquirer:'TPG Capital',target:'Athenahealth',value:'$17B',sector:'EHR & Health IT',type:'Mega',desc:'TPG and Hellman & Friedman took athenahealth private in massive cloud health IT deal.'},
+  {date:'2022-12',acquirer:'Thoma Bravo',target:'Imprivata',value:'$3.6B',sector:'EHR & Health IT',type:'Major',desc:'PE firm Thoma Bravo acquired identity/access management leader for healthcare environments.'},
+  {date:'2022-09',acquirer:'Veritas Capital',target:'Cotiviti',value:'$4.9B',sector:'Quality & Compliance',type:'Major',desc:'Veritas acquired healthcare analytics and payment accuracy company from Advent.'},
+  {date:'2022-06',acquirer:'Clearlake Capital',target:'Symplr (merger)',value:'$1.2B',sector:'Workforce & Scheduling',type:'Major',desc:'Clearlake combined multiple healthcare governance assets into the symplr platform.'},
+  {date:'2022-04',acquirer:'IQVIA',target:'Propel Media',value:'$425M',sector:'Population Health & Analytics',type:'Growth',desc:'IQVIA expanded marketing analytics for pharma and life sciences.'},
+  {date:'2022-02',acquirer:'Hearst Health',target:'MedBridge',value:'Undisclosed',sector:'Clinical Decision Support',type:'Strategic',desc:'Hearst Health added MedBridge patient engagement and clinical education to its portfolio.'},
+  {date:'2021-11',acquirer:'Hellman & Friedman',target:'Verint (spin)',value:'$2.4B',sector:'Population Health & Analytics',type:'Major',desc:'Verint workforce engagement assets spun out, impacting healthcare contact centers.'},
+  {date:'2021-08',acquirer:'Nordic Capital',target:'Inovalon',value:'$7.3B',sector:'Quality & Compliance',type:'Mega',desc:'Nordic Capital took Inovalon private — massive data-driven quality analytics platform.'},
+  {date:'2021-06',acquirer:'Google Cloud',target:'Meditech (partnership)',value:'Strategic',sector:'EHR & Health IT',type:'Strategic',desc:'Google Cloud partnered with MEDITECH for cloud-hosted EHR, signaling Big Tech healthcare push.'},
+  {date:'2021-03',acquirer:'Vista Equity',target:'Zapprx → Therigy',value:'$500M',sector:'Drug Data & Formulary',type:'Growth',desc:'Vista continued rolling up specialty pharmacy platforms with clinical workflow tools.'},
+  {date:'2021-01',acquirer:'Hearst Health',target:'Homecare Homebase',value:'Undisclosed',sector:'EHR & Health IT',type:'Strategic',desc:'Hearst Health acquired HCHB, the leading home health and hospice software platform.'},
+  {date:'2020-10',acquirer:'3M',target:'M*Modal (integration)',value:'$1B',sector:'Revenue Cycle & Coding',type:'Major',desc:'3M fully integrated M*Modal AI-powered clinical documentation into its health information systems.'},
+  {date:'2020-06',acquirer:'Insight Partners',target:'Vyne Medical',value:'$400M',sector:'Revenue Cycle & Coding',type:'Growth',desc:'Insight invested in healthcare document management and revenue integrity.'},
+  {date:'2020-03',acquirer:'Verscend (Veritas)',target:'Cotiviti Merge',value:'$1.8B',sector:'Quality & Compliance',type:'Major',desc:'Veritas merged Verscend and Cotiviti, creating analytics powerhouse for payer quality.'},
+  {date:'2019-11',acquirer:'Hearst Health',target:'MCG Health',value:'Undisclosed',sector:'Clinical Decision Support',type:'Strategic',desc:'Hearst Health brought MCG clinical guidelines under its health portfolio umbrella.'},
+  {date:'2019-06',acquirer:'Roper Technologies',target:'Foundry (data platforms)',value:'$1.6B',sector:'Population Health & Analytics',type:'Major',desc:'Roper expanded healthcare data capabilities with analytics platform acquisitions.'},
+  {date:'2019-02',acquirer:'Veritas Capital',target:'Athenahealth (first)',value:'$5.7B',sector:'EHR & Health IT',type:'Mega',desc:'Veritas and Elliott took athenahealth private from public markets, first of two PE deals.'}
+];
+
+const TL_TYPES={Mega:{color:'#ef5350',icon:'🔴'},Major:{color:'#ffca28',icon:'🟡'},Strategic:{color:'#4fc3f7',icon:'🔵'},Growth:{color:'#66bb6a',icon:'🟢'}};
+
+const tlToggle=document.getElementById('timelineToggle');
+const tlPanel=document.getElementById('timelinePanel');
+const tlClose=document.getElementById('timelineClose');
+const tlFilters=document.getElementById('tlFilters');
+const tlStats=document.getElementById('tlStats');
+const tlBody=document.getElementById('tlBody');
+
+let tlActiveType='all';
+tlToggle.onclick=()=>{tlPanel.classList.toggle('visible');tlToggle.classList.toggle('active');if(tlPanel.classList.contains('visible'))renderTimeline();};
+tlClose.onclick=()=>{tlPanel.classList.remove('visible');tlToggle.classList.remove('active');};
+
+// Filters
+tlFilters.innerHTML=`<button class="tl-filter active" data-type="all">All Deals</button>`+
+  Object.entries(TL_TYPES).map(([t,{icon}])=>`<button class="tl-filter" data-type="${t}">${icon} ${t}</button>`).join('');
+tlFilters.addEventListener('click',e=>{if(!e.target.classList.contains('tl-filter'))return;tlFilters.querySelectorAll('.tl-filter').forEach(b=>b.classList.remove('active'));e.target.classList.add('active');tlActiveType=e.target.dataset.type;renderTimeline();});
+
+function renderTimeline(){
+  const filtered=tlActiveType==='all'?maDeals:maDeals.filter(d=>d.type===tlActiveType);
+  // Stats
+  const totalVal=filtered.reduce((s,d)=>{const m=d.value.match(/\$([\d.]+)B/);return s+(m?parseFloat(m[1]):0);},0);
+  const megaCount=filtered.filter(d=>d.type==='Mega').length;
+  tlStats.innerHTML=`
+    <div class="tl-stat"><div class="tl-val">${filtered.length}</div><div class="tl-lbl">Deals</div></div>
+    <div class="tl-stat"><div class="tl-val">$${totalVal.toFixed(1)}B+</div><div class="tl-lbl">Total Value</div></div>
+    <div class="tl-stat"><div class="tl-val">${megaCount}</div><div class="tl-lbl">Mega Deals ($5B+)</div></div>
+    <div class="tl-stat"><div class="tl-val">${new Set(filtered.map(d=>d.sector)).size}</div><div class="tl-lbl">Sectors</div></div>`;
+  // Group by year
+  const byYear={};
+  filtered.forEach(d=>{const y=d.date.split('-')[0];(byYear[y]=byYear[y]||[]).push(d);});
+  tlBody.innerHTML=Object.entries(byYear).sort((a,b)=>b[0]-a[0]).map(([year,deals])=>`
+    <div class="tl-year-group">
+      <div class="tl-year">${year}<span class="tl-year-count">${deals.length} deal${deals.length>1?'s':''}</span></div>
+      <div class="tl-track">${deals.map(d=>{
+        const {color,icon}=TL_TYPES[d.type]||TL_TYPES.Growth;
+        const month=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(d.date.split('-')[1])];
+        return `<div class="tl-event ${d.type==='Mega'?'mega':''}">
+          <div class="tl-event-card">
+            <div class="tl-date">${month} ${year}</div>
+            <div class="tl-title">${d.target}</div>
+            <div class="tl-parties">${icon} ${d.acquirer} → ${d.target}</div>
+            <div class="tl-desc">${d.desc}</div>
+            <div class="tl-meta">
+              <span class="tl-deal-val">${d.value}</span>
+              <span class="tag" style="background:${color}22;color:${color}">${d.type}</span>
+              <span class="tag">${d.sector.split(' ')[0]}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}</div>
+    </div>`).join('');
+}
 </script>
 </body>
 </html>
