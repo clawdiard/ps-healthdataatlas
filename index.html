@@ -115,6 +115,21 @@ header h1 span{color:var(--accent)}
 .tl-event-card .tl-meta{display:flex;gap:8px;flex-wrap:wrap}
 .tl-deal-val{font-size:13px;font-weight:700;color:var(--green)}
 @media(max-width:768px){
+/* Network Panel */
+.network-panel{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(10,14,20,.97);z-index:999;display:none;flex-direction:column;overflow:hidden}
+.network-panel.visible{display:flex}
+.net-stats{padding:12px 24px;display:flex;gap:24px;border-bottom:1px solid var(--border)}
+.net-canvas{flex:1;position:relative;overflow:hidden}
+.net-canvas svg{width:100%;height:100%}
+.net-legend{position:absolute;bottom:24px;left:24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;z-index:1001;min-width:200px}
+.net-legend h4{font-size:12px;font-weight:600;margin-bottom:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.net-legend-item{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+.net-legend-dot{width:12px;height:12px;border-radius:50%;border:2px solid}
+.net-tooltip{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;pointer-events:none;z-index:1002;max-width:300px;display:none;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.net-tooltip h5{font-size:14px;font-weight:700;margin-bottom:4px}
+.net-tooltip .nt-type{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.net-tooltip .nt-connections{font-size:12px;color:var(--text2);line-height:1.6}
+@media(max-width:768px){
   .app{grid-template-columns:1fr;grid-template-rows:64px auto 50vh}
   .sidebar{max-height:40vh}
   .coverage-overlay{display:none}
@@ -155,6 +170,7 @@ header h1 span{color:var(--accent)}
         <div id="fhirFeed"><div class="feed-loading">Loading FHIR data…</div></div>
       </div>
     </div>
+    <button class="timeline-toggle" id="networkToggle" style="right:440px">🔗 Interop Network</button>
     <button class="timeline-toggle" id="timelineToggle">📅 M&A Timeline</button>
     <div class="timeline-panel" id="timelinePanel">
       <div class="timeline-header">
@@ -164,6 +180,18 @@ header h1 span{color:var(--accent)}
       <div class="timeline-filters" id="tlFilters"></div>
       <div class="timeline-stats" id="tlStats"></div>
       <div class="timeline-body" id="tlBody"></div>
+    </div>
+    <div class="network-panel" id="networkPanel">
+      <div class="timeline-header">
+        <h2>🔗 Interoperability <span>Network</span></h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="filter-row" id="netFilters" style="margin:0"></div>
+          <button class="timeline-close" id="networkClose">✕ Close</button>
+        </div>
+      </div>
+      <div class="net-stats" id="netStats"></div>
+      <div class="net-canvas" id="netCanvas"></div>
+      <div class="net-legend" id="netLegend"></div>
     </div>
     <div class="coverage-overlay">
       <h4>Market Coverage</h4>
@@ -505,6 +533,250 @@ function renderTimeline(){
         </div>`;
       }).join('')}</div>
     </div>`).join('');
+}
+
+// === INTEROPERABILITY NETWORK GRAPH ===
+const NET_NODES_TYPE={
+  company:{color:'#4fc3f7',label:'Company'},
+  ehr:{color:'#ef5350',label:'EHR System'},
+  standard:{color:'#66bb6a',label:'Data Standard'},
+  exchange:{color:'#ffca28',label:'Exchange Network'},
+  gov:{color:'#ab47bc',label:'Gov/Regulatory'}
+};
+
+const netNodes=[
+  // Companies
+  {id:'fdb',label:'FDB',type:'company',size:22},{id:'zynx',label:'Zynx Health',type:'company',size:18},{id:'mcg',label:'MCG Health',type:'company',size:20},{id:'qgenda',label:'QGenda',type:'company',size:20},{id:'medbridge',label:'MedBridge',type:'company',size:14},{id:'epic',label:'Epic Systems',type:'company',size:28},{id:'oracle_h',label:'Oracle Health',type:'company',size:26},{id:'meditech',label:'MEDITECH',type:'company',size:20},{id:'veeva',label:'Veeva Systems',type:'company',size:16},{id:'3m_his',label:'3M HIS',type:'company',size:22},{id:'optum',label:'Optum',type:'company',size:28},{id:'inovalon',label:'Inovalon',type:'company',size:18},{id:'nuance',label:'Nuance/MSFT DAX',type:'company',size:22},{id:'health_cat',label:'Health Catalyst',type:'company',size:16},{id:'waystar',label:'Waystar',type:'company',size:18},{id:'rhapsody',label:'Rhapsody',type:'company',size:18},{id:'arcadia',label:'Arcadia',type:'company',size:16},{id:'vizient',label:'Vizient',type:'company',size:20},{id:'symplr',label:'symplr',type:'company',size:18},{id:'veracyte',label:'Veracyte',type:'company',size:12},
+  // EHR Systems
+  {id:'epic_ehr',label:'Epic EHR',type:'ehr',size:30},{id:'cerner_ehr',label:'Oracle Health EHR',type:'ehr',size:26},{id:'meditech_ehr',label:'MEDITECH Expanse',type:'ehr',size:20},{id:'athena_ehr',label:'athenahealth',type:'ehr',size:18},{id:'allscripts_ehr',label:'Veradigm',type:'ehr',size:16},{id:'ecw_ehr',label:'eClinicalWorks',type:'ehr',size:14},
+  // Standards
+  {id:'fhir',label:'HL7 FHIR',type:'standard',size:26},{id:'hl7v2',label:'HL7 v2',type:'standard',size:20},{id:'cda',label:'C-CDA',type:'standard',size:16},{id:'x12',label:'X12 EDI',type:'standard',size:18},{id:'ncpdp',label:'NCPDP',type:'standard',size:14},
+  // Exchange Networks
+  {id:'commonwell',label:'CommonWell',type:'exchange',size:18},{id:'carequality',label:'Carequality',type:'exchange',size:20},{id:'tefca',label:'TEFCA',type:'exchange',size:22},{id:'surescripts',label:'Surescripts',type:'exchange',size:18},{id:'ehealth_ex',label:'eHealth Exchange',type:'exchange',size:16},
+  // Gov
+  {id:'cms_gov',label:'CMS',type:'gov',size:20},{id:'onc',label:'ONC',type:'gov',size:18},{id:'fda_gov',label:'FDA',type:'gov',size:16}
+];
+
+const netEdges=[
+  // FDB integrations
+  {s:'fdb',t:'epic_ehr',w:3},{s:'fdb',t:'cerner_ehr',w:3},{s:'fdb',t:'meditech_ehr',w:2},{s:'fdb',t:'athena_ehr',w:2},{s:'fdb',t:'allscripts_ehr',w:2},{s:'fdb',t:'ecw_ehr',w:2},{s:'fdb',t:'surescripts',w:3},{s:'fdb',t:'ncpdp',w:2},{s:'fdb',t:'fda_gov',w:2},
+  // Zynx
+  {s:'zynx',t:'epic_ehr',w:3},{s:'zynx',t:'cerner_ehr',w:2},{s:'zynx',t:'meditech_ehr',w:2},{s:'zynx',t:'fhir',w:2},
+  // MCG
+  {s:'mcg',t:'epic_ehr',w:3},{s:'mcg',t:'cerner_ehr',w:2},{s:'mcg',t:'fhir',w:2},{s:'mcg',t:'x12',w:2},{s:'mcg',t:'cms_gov',w:2},
+  // QGenda
+  {s:'qgenda',t:'epic_ehr',w:3},{s:'qgenda',t:'cerner_ehr',w:2},{s:'qgenda',t:'meditech_ehr',w:1},{s:'qgenda',t:'fhir',w:2},
+  // Epic
+  {s:'epic',t:'epic_ehr',w:3},{s:'epic',t:'fhir',w:3},{s:'epic',t:'hl7v2',w:3},{s:'epic',t:'cda',w:2},{s:'epic',t:'carequality',w:3},{s:'epic',t:'commonwell',w:1},{s:'epic',t:'tefca',w:2},{s:'epic',t:'onc',w:2},{s:'epic',t:'cms_gov',w:2},
+  // Oracle Health
+  {s:'oracle_h',t:'cerner_ehr',w:3},{s:'oracle_h',t:'fhir',w:3},{s:'oracle_h',t:'hl7v2',w:3},{s:'oracle_h',t:'commonwell',w:3},{s:'oracle_h',t:'tefca',w:2},{s:'oracle_h',t:'onc',w:2},
+  // MEDITECH
+  {s:'meditech',t:'meditech_ehr',w:3},{s:'meditech',t:'fhir',w:2},{s:'meditech',t:'hl7v2',w:3},{s:'meditech',t:'carequality',w:2},{s:'meditech',t:'commonwell',w:2},
+  // Nuance
+  {s:'nuance',t:'epic_ehr',w:3},{s:'nuance',t:'cerner_ehr',w:2},{s:'nuance',t:'meditech_ehr',w:2},{s:'nuance',t:'athena_ehr',w:1},{s:'nuance',t:'fhir',w:2},
+  // 3M HIS
+  {s:'3m_his',t:'epic_ehr',w:2},{s:'3m_his',t:'cerner_ehr',w:2},{s:'3m_his',t:'hl7v2',w:2},{s:'3m_his',t:'x12',w:3},{s:'3m_his',t:'cms_gov',w:3},
+  // Optum
+  {s:'optum',t:'epic_ehr',w:2},{s:'optum',t:'cerner_ehr',w:2},{s:'optum',t:'fhir',w:2},{s:'optum',t:'x12',w:3},{s:'optum',t:'surescripts',w:2},{s:'optum',t:'cms_gov',w:3},{s:'optum',t:'ehealth_ex',w:2},
+  // Waystar
+  {s:'waystar',t:'epic_ehr',w:2},{s:'waystar',t:'cerner_ehr',w:2},{s:'waystar',t:'x12',w:3},{s:'waystar',t:'cms_gov',w:2},
+  // Rhapsody
+  {s:'rhapsody',t:'fhir',w:3},{s:'rhapsody',t:'hl7v2',w:3},{s:'rhapsody',t:'cda',w:2},{s:'rhapsody',t:'epic_ehr',w:2},{s:'rhapsody',t:'cerner_ehr',w:2},{s:'rhapsody',t:'carequality',w:2},{s:'rhapsody',t:'tefca',w:2},
+  // Arcadia
+  {s:'arcadia',t:'epic_ehr',w:2},{s:'arcadia',t:'cerner_ehr',w:2},{s:'arcadia',t:'athena_ehr',w:2},{s:'arcadia',t:'fhir',w:2},{s:'arcadia',t:'cda',w:2},{s:'arcadia',t:'carequality',w:1},
+  // Inovalon
+  {s:'inovalon',t:'cms_gov',w:3},{s:'inovalon',t:'x12',w:2},{s:'inovalon',t:'fhir',w:1},
+  // Health Catalyst
+  {s:'health_cat',t:'epic_ehr',w:2},{s:'health_cat',t:'cerner_ehr',w:2},{s:'health_cat',t:'fhir',w:2},{s:'health_cat',t:'hl7v2',w:2},
+  // Vizient
+  {s:'vizient',t:'epic_ehr',w:1},{s:'vizient',t:'cerner_ehr',w:1},{s:'vizient',t:'cms_gov',w:2},{s:'vizient',t:'x12',w:2},
+  // symplr
+  {s:'symplr',t:'epic_ehr',w:2},{s:'symplr',t:'cerner_ehr',w:2},{s:'symplr',t:'meditech_ehr',w:1},{s:'symplr',t:'fhir',w:1},
+  // Veeva
+  {s:'veeva',t:'fhir',w:1},{s:'veeva',t:'fda_gov',w:2},
+  // Veracyte
+  {s:'veracyte',t:'epic_ehr',w:1},{s:'veracyte',t:'fhir',w:1},
+  // MedBridge
+  {s:'medbridge',t:'epic_ehr',w:1},{s:'medbridge',t:'fhir',w:1},
+  // Exchange cross-links
+  {s:'tefca',t:'carequality',w:3},{s:'tefca',t:'commonwell',w:2},{s:'tefca',t:'ehealth_ex',w:3},{s:'tefca',t:'onc',w:3},{s:'carequality',t:'ehealth_ex',w:2},{s:'commonwell',t:'carequality',w:2},
+  // Standards to gov
+  {s:'fhir',t:'onc',w:3},{s:'fhir',t:'cms_gov',w:2},{s:'x12',t:'cms_gov',w:3},{s:'ncpdp',t:'fda_gov',w:2}
+];
+
+// Network graph rendering (pure Canvas + simple force sim)
+const netToggle=document.getElementById('networkToggle');
+const netPanel=document.getElementById('networkPanel');
+const netClose=document.getElementById('networkClose');
+const netCanvas=document.getElementById('netCanvas');
+const netStatsEl=document.getElementById('netStats');
+const netLegendEl=document.getElementById('netLegend');
+const netFiltersEl=document.getElementById('netFilters');
+
+let netActiveFilter='all';
+let netAnimId=null;
+
+netToggle.onclick=()=>{netPanel.classList.toggle('visible');netToggle.classList.toggle('active');if(netPanel.classList.contains('visible'))initNetwork();else cancelAnimationFrame(netAnimId);};
+netClose.onclick=()=>{netPanel.classList.remove('visible');netToggle.classList.remove('active');cancelAnimationFrame(netAnimId);};
+
+// Filters
+netFiltersEl.innerHTML=`<button class="filter-btn active" data-nf="all">All</button>`+
+  Object.entries(NET_NODES_TYPE).map(([k,v])=>`<button class="filter-btn" data-nf="${k}">${v.label}</button>`).join('');
+netFiltersEl.addEventListener('click',e=>{if(!e.target.classList.contains('filter-btn'))return;netFiltersEl.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));e.target.classList.add('active');netActiveFilter=e.target.dataset.nf;initNetwork();});
+
+// Legend
+netLegendEl.innerHTML=`<h4>Node Types</h4>`+Object.entries(NET_NODES_TYPE).map(([k,v])=>`<div class="net-legend-item"><div class="net-legend-dot" style="background:${v.color}40;border-color:${v.color}"></div>${v.label}</div>`).join('')+`<div style="margin-top:10px;font-size:11px;color:var(--text2)">Line thickness = integration depth</div>`;
+
+function initNetwork(){
+  cancelAnimationFrame(netAnimId);
+  netCanvas.innerHTML='';
+
+  // Tooltip
+  const tooltip=document.createElement('div');
+  tooltip.className='net-tooltip';
+  netCanvas.appendChild(tooltip);
+
+  const cvs=document.createElement('canvas');
+  netCanvas.appendChild(cvs);
+  const ctx=cvs.getContext('2d');
+  const W=netCanvas.clientWidth, H=netCanvas.clientHeight;
+  cvs.width=W*2;cvs.height=H*2;cvs.style.width=W+'px';cvs.style.height=H+'px';
+  ctx.scale(2,2);
+
+  // Filter nodes/edges
+  const visibleIds=new Set();
+  let nodes,edges;
+  if(netActiveFilter==='all'){
+    nodes=netNodes.map(n=>({...n}));
+    edges=netEdges.map(e=>({...e}));
+    nodes.forEach(n=>visibleIds.add(n.id));
+  } else {
+    const primary=netNodes.filter(n=>n.type===netActiveFilter);
+    primary.forEach(n=>visibleIds.add(n.id));
+    // Add connected nodes
+    netEdges.forEach(e=>{if(visibleIds.has(e.s))visibleIds.add(e.t);if(visibleIds.has(e.t))visibleIds.add(e.s);});
+    nodes=netNodes.filter(n=>visibleIds.has(n.id)).map(n=>({...n}));
+    edges=netEdges.filter(e=>visibleIds.has(e.s)&&visibleIds.has(e.t)).map(e=>({...e}));
+  }
+
+  const nodeMap={};
+  nodes.forEach(n=>{n.x=W/2+(Math.random()-.5)*W*.6;n.y=H/2+(Math.random()-.5)*H*.6;n.vx=0;n.vy=0;nodeMap[n.id]=n;});
+
+  // Stats
+  const connCount={};
+  edges.forEach(e=>{connCount[e.s]=(connCount[e.s]||0)+1;connCount[e.t]=(connCount[e.t]||0)+1;});
+  const mostConnected=nodes.sort((a,b)=>(connCount[b.id]||0)-(connCount[a.id]||0))[0];
+  netStatsEl.innerHTML=`
+    <div class="tl-stat"><div class="tl-val">${nodes.length}</div><div class="tl-lbl">Nodes</div></div>
+    <div class="tl-stat"><div class="tl-val">${edges.length}</div><div class="tl-lbl">Connections</div></div>
+    <div class="tl-stat"><div class="tl-val">${mostConnected?mostConnected.label:'-'}</div><div class="tl-lbl">Most Connected</div></div>
+    <div class="tl-stat"><div class="tl-val">${new Set(nodes.map(n=>n.type)).size}</div><div class="tl-lbl">Node Types</div></div>`;
+
+  let hoveredNode=null;
+  let dragNode=null;
+  let mx=0,my=0;
+
+  cvs.addEventListener('mousemove',e=>{
+    const rect=cvs.getBoundingClientRect();
+    mx=e.clientX-rect.left;my=e.clientY-rect.top;
+    if(dragNode){dragNode.x=mx;dragNode.y=my;dragNode.vx=0;dragNode.vy=0;return;}
+    hoveredNode=null;
+    for(const n of nodes){const dx=n.x-mx,dy=n.y-my;if(Math.sqrt(dx*dx+dy*dy)<n.size*.7){hoveredNode=n;break;}}
+    if(hoveredNode){
+      cvs.style.cursor='pointer';
+      const conns=edges.filter(e=>e.s===hoveredNode.id||e.t===hoveredNode.id);
+      const connNames=conns.map(e=>{const otherId=e.s===hoveredNode.id?e.t:e.s;return nodeMap[otherId]?nodeMap[otherId].label:'?';});
+      tooltip.style.display='block';
+      tooltip.style.left=Math.min(mx+16,W-260)+'px';
+      tooltip.style.top=Math.min(my-10,H-150)+'px';
+      tooltip.innerHTML=`<h5>${hoveredNode.label}</h5><div class="nt-type">${NET_NODES_TYPE[hoveredNode.type]?.label||hoveredNode.type} — ${conns.length} connections</div><div class="nt-connections">${connNames.map(c=>'• '+c).join('<br>')}</div>`;
+    } else {
+      cvs.style.cursor='default';
+      tooltip.style.display='none';
+    }
+  });
+
+  cvs.addEventListener('mousedown',e=>{if(hoveredNode){dragNode=hoveredNode;e.preventDefault();}});
+  cvs.addEventListener('mouseup',()=>{dragNode=null;});
+  cvs.addEventListener('mouseleave',()=>{dragNode=null;hoveredNode=null;tooltip.style.display='none';});
+
+  // Force simulation
+  function tick(){
+    // Repulsion
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        let dx=nodes[j].x-nodes[i].x,dy=nodes[j].y-nodes[i].y;
+        let d=Math.sqrt(dx*dx+dy*dy)||1;
+        let f=800/(d*d);
+        nodes[i].vx-=dx/d*f;nodes[i].vy-=dy/d*f;
+        nodes[j].vx+=dx/d*f;nodes[j].vy+=dy/d*f;
+      }
+    }
+    // Attraction (edges)
+    edges.forEach(e=>{
+      const a=nodeMap[e.s],b=nodeMap[e.t];
+      if(!a||!b)return;
+      let dx=b.x-a.x,dy=b.y-a.y;
+      let d=Math.sqrt(dx*dx+dy*dy)||1;
+      let f=(d-120)*.02*e.w;
+      a.vx+=dx/d*f;a.vy+=dy/d*f;
+      b.vx-=dx/d*f;b.vy-=dy/d*f;
+    });
+    // Center gravity
+    nodes.forEach(n=>{
+      n.vx+=(W/2-n.x)*.002;
+      n.vy+=(H/2-n.y)*.002;
+      if(n===dragNode)return;
+      n.vx*=.85;n.vy*=.85;
+      n.x+=n.vx;n.y+=n.vy;
+      n.x=Math.max(40,Math.min(W-40,n.x));
+      n.y=Math.max(40,Math.min(H-40,n.y));
+    });
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    // Edges
+    edges.forEach(e=>{
+      const a=nodeMap[e.s],b=nodeMap[e.t];
+      if(!a||!b)return;
+      const highlighted=hoveredNode&&(e.s===hoveredNode.id||e.t===hoveredNode.id);
+      ctx.beginPath();
+      ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+      ctx.strokeStyle=highlighted?'rgba(79,195,247,.6)':'rgba(255,255,255,.08)';
+      ctx.lineWidth=highlighted?e.w*1.5:e.w*.5;
+      ctx.stroke();
+    });
+    // Nodes
+    nodes.forEach(n=>{
+      const col=NET_NODES_TYPE[n.type]?.color||'#4fc3f7';
+      const isHovered=hoveredNode===n;
+      const isConnected=hoveredNode&&edges.some(e=>(e.s===hoveredNode.id&&e.t===n.id)||(e.t===hoveredNode.id&&e.s===n.id));
+      const alpha=hoveredNode?(isHovered||isConnected?1:.2):1;
+      const r=n.size*.6;
+      // Glow
+      if(isHovered){
+        ctx.beginPath();ctx.arc(n.x,n.y,r+8,0,Math.PI*2);
+        const g=ctx.createRadialGradient(n.x,n.y,r,n.x,n.y,r+8);
+        g.addColorStop(0,col+'44');g.addColorStop(1,'transparent');
+        ctx.fillStyle=g;ctx.fill();
+      }
+      ctx.globalAlpha=alpha;
+      ctx.beginPath();ctx.arc(n.x,n.y,r,0,Math.PI*2);
+      ctx.fillStyle=col+'33';ctx.fill();
+      ctx.strokeStyle=col;ctx.lineWidth=isHovered?2.5:1.5;ctx.stroke();
+      // Label
+      ctx.fillStyle=isHovered?'#fff':'#c8d0de';
+      ctx.font=(isHovered?'bold ':'')+`${Math.max(9,r*.7)}px -apple-system,sans-serif`;
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      const label=n.label.length>14?n.label.substring(0,12)+'…':n.label;
+      ctx.fillText(label,n.x,n.y+r+12);
+      ctx.globalAlpha=1;
+    });
+  }
+
+  function loop(){tick();draw();netAnimId=requestAnimationFrame(loop);}
+  loop();
 }
 </script>
 </body>
